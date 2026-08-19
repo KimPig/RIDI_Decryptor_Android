@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_blue">#1677D2</color>
+    <color name="brand_blue_dark">#0B5CA8</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="background">#F4F6F8</color>
+    <color name="text_primary">#16202A</color>
+    <color name="text_secondary">#5C6875</color>
+    <color name="text_muted">#87919C</color>
+    <color name="border">#DCE2E8</color>
+    <color name="selected_surface">#F7FBFF</color>
+    <color name="series_expanded_surface">#EEF1F4</color>
+    <color name="series_expanded_border">#C7CED6</color>
+    <color name="chip_blue_surface">#D7EBFF</color>
+    <color name="chip_blue_border">#8FC4F3</color>
+    <color name="chip_gray_surface">#E8EDF2</color>
+    <color name="chip_gray_border">#C7D0DA</color>
+    <color name="success_text">#16815D</color>
+    <color name="error_text">#B23A48</color>
+    <color name="warning_bg">#FFF7E5</color>
+    <color name="warning_text">#754C00</color>
+</resources>

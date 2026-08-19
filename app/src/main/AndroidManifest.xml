@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Android 7-9 only. Android 10+ uses MediaStore. Intentionally no INTERNET permission. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="false"
+        android:icon="@drawable/ic_launcher"
+        android:label="RIDI Decryptor"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.RidiDecryptor">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".AdvancedActivity" android:exported="false" />
+        <activity android:name=".BookDetailsActivity" android:exported="false" />
+        <activity android:name=".BookRealmRecordActivity" android:exported="false" />
+        <activity android:name=".RealmDebugActivity" android:exported="false" />
+    </application>
+
+</manifest>
