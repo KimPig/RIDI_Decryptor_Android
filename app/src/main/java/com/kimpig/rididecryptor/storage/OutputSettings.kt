@@ -3,7 +3,7 @@ package com.kimpig.rididecryptor.storage
 import android.content.Context
 import android.net.Uri
 
-enum class ExistingFileBehavior { KEEP_BOTH, REPLACE }
+enum class ExistingFileBehavior { KEEP_BOTH, SKIP, REPLACE }
 
 object OutputSettings {
     private const val PREFS = "decryptor_settings"

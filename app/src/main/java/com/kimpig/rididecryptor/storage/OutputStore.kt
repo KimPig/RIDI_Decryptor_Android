@@ -18,12 +18,20 @@ import java.io.InputStream
 import java.io.IOException
 import java.security.MessageDigest
 
+data class OutputSaveResult(val location: String, val skipped: Boolean)
+
 class OutputStore(private val context: Context) {
     fun save(
         result: DecryptResult,
         outputTree: Uri? = null,
         progress: (ProgressUpdate) -> Unit = {}
-    ): String {
+    ): OutputSaveResult {
+        if (OutputSettings.behavior(context) == ExistingFileBehavior.SKIP) {
+            existingOutputLocation(result.fileName, outputTree)?.let { existing ->
+                progress(ProgressUpdate("Skipped existing output", 1, 1))
+                return OutputSaveResult(existing, skipped = true)
+            }
+        }
         val location = if (outputTree != null) {
             saveToTree(result, outputTree, progress).toString()
         } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -32,15 +40,37 @@ class OutputStore(private val context: Context) {
             saveLegacy(result, progress).absolutePath
         }
         rememberOutput(location, result)
-        return location
+        return OutputSaveResult(location, skipped = false)
+    }
+
+    private fun existingOutputLocation(fileName: String, outputTree: Uri?): String? {
+        if (outputTree != null) {
+            require(!Uri.decode(outputTree.toString()).contains("com.initialcoms.ridi", ignoreCase = true)) {
+                "The official RIDI directory cannot be selected as an output folder"
+            }
+            val parentId = DocumentsContract.getTreeDocumentId(outputTree)
+            return findDocument(outputTree, parentId, fileName)?.toString()
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            return existingMediaStoreEntries(fileName).firstOrNull()?.toString()
+        }
+
+        @Suppress("DEPRECATION")
+        val directory = File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "RIDI_Decryptor"
+        )
+        return File(directory, fileName).takeIf(File::exists)?.absolutePath
     }
 
     fun discover(bookIds: Set<String>, outputTree: Uri? = null): Map<String, List<DecryptedOutput>> {
         if (bookIds.isEmpty()) return emptyMap()
-        val found = if (outputTree != null) discoverTree(outputTree) else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            discoverMediaStore()
+        val rootFiles = RootOutputDiscovery().discover(outputTree)
+        val found = if (rootFiles != null) {
+            rootFiles.map { file -> outputRecord(file.name, file.path, file.size, file.path) }
         } else {
-            discoverLegacy()
+            discoverTree(requireNotNull(outputTree))
         }
         return found.mapNotNull { output ->
             matchBookId(output.displayName, bookIds)?.let { it to output }
@@ -295,38 +325,6 @@ class OutputStore(private val context: Context) {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.Q)
-    private fun discoverMediaStore(): List<DecryptedOutput> {
-        val resolver = context.contentResolver
-        val projection = arrayOf(
-            MediaStore.Downloads._ID,
-            MediaStore.Downloads.DISPLAY_NAME,
-            MediaStore.Downloads.SIZE,
-            MediaStore.Downloads.RELATIVE_PATH
-        )
-        return resolver.query(
-            MediaStore.Downloads.EXTERNAL_CONTENT_URI,
-            projection,
-            "${MediaStore.Downloads.RELATIVE_PATH} LIKE ?",
-            arrayOf("%RIDI_Decryptor%"),
-            "${MediaStore.Downloads.DATE_MODIFIED} DESC"
-        )?.use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) {
-                    val id = cursor.getLong(0)
-                    val name = cursor.getString(1) ?: continue
-                    val size = cursor.getLong(2)
-                    val relativePath = cursor.getString(3).orEmpty()
-                    val uri = Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI, id.toString())
-                    if (validOutput(name) { resolver.openInputStream(uri) }) {
-                        val friendlyBase = relativePath.trimEnd('/').ifBlank { "Download/RIDI_Decryptor" }
-                        add(outputRecord(name, uri.toString(), size, "$friendlyBase/$name"))
-                    }
-                }
-            }
-        } ?: emptyList()
-    }
-
     private fun discoverTree(treeUri: Uri): List<DecryptedOutput> {
         if (Uri.decode(treeUri.toString()).contains("com.initialcoms.ridi", ignoreCase = true)) return emptyList()
         val resolver = context.contentResolver
@@ -350,19 +348,6 @@ class OutputStore(private val context: Context) {
                     }
                 }
             }
-        } ?: emptyList()
-    }
-
-    @Suppress("DEPRECATION")
-    private fun discoverLegacy(): List<DecryptedOutput> {
-        val directory = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "RIDI_Decryptor"
-        )
-        return directory.listFiles()?.mapNotNull { file ->
-            if (file.isFile && validOutput(file.name) { FileInputStream(file) }) {
-                outputRecord(file.name, file.absolutePath, file.length(), file.absolutePath)
-            } else null
         } ?: emptyList()
     }
 

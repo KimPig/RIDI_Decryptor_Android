@@ -133,7 +133,7 @@
                 android:minWidth="0dp"
                 android:paddingStart="10dp"
                 android:paddingEnd="10dp"
-                android:text="@string/advanced"
+                android:text="@string/settings"
                 android:textAllCaps="false"
                 android:textColor="@color/brand_blue" />
         </LinearLayout>

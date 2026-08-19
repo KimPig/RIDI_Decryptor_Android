@@ -268,8 +268,9 @@ class MainActivity : AppCompatActivity() {
         }
 
         runBusy("Preparing private working copies…") {
-            val (saved, failed) = withContext(Dispatchers.IO) {
+            val (saved, skipped, failed) = withContext(Dispatchers.IO) {
                 val saved = mutableListOf<String>()
+                val skipped = mutableListOf<String>()
                 val failed = mutableListOf<String>()
                 val outputTree = OutputSettings.outputTree(this@MainActivity)
                 candidates.forEachIndexed { index, candidate ->
@@ -291,17 +292,19 @@ class MainActivity : AppCompatActivity() {
                         }
                         statusOnMain("${index + 1}/${candidates.size} · Decrypting and validating ${candidate.displayTitle}…")
                         val result = CryptoEngine().decrypt(prepared, activeDeviceId, outputDir, ::progressOnMain)
-                        saved += OutputStore(this@MainActivity).save(result, outputTree, ::progressOnMain)
+                        val saveResult = OutputStore(this@MainActivity).save(result, outputTree, ::progressOnMain)
+                        if (saveResult.skipped) skipped += candidate.displayTitle else saved += saveResult.location
                     } catch (error: Throwable) {
                         failed += "${candidate.displayTitle}: ${error.message ?: error.javaClass.simpleName}"
                     } finally {
                         work.deleteRecursively()
                     }
                 }
-                saved to failed
+                Triple(saved, skipped, failed)
             }
             status(buildString {
                 append("Completed: ${saved.size} saved")
+                if (skipped.isNotEmpty()) append(" · ${skipped.size} skipped")
                 if (failed.isNotEmpty()) append(" · ${failed.size} failed\n${failed.joinToString("\n")}")
             })
             refreshOutputStatusNow()

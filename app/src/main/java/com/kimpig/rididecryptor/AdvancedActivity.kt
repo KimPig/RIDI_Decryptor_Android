@@ -95,10 +95,17 @@ class AdvancedActivity : AppCompatActivity() {
             updateOutputDescription()
             status.text = "Output reset to Download/RIDI_Decryptor."
         }
-        val fileOptions = listOf("Auto rename", "Overwrite")
+        val fileOptions = listOf("Auto rename", "Skip", "Replace")
         fileBehaviorDropdown.setAdapter(ArrayAdapter(this, android.R.layout.simple_dropdown_item_1line, fileOptions))
         fileBehaviorDropdown.setOnItemClickListener { _, _, position, _ ->
-            OutputSettings.setBehavior(this, if (position == 0) ExistingFileBehavior.KEEP_BOTH else ExistingFileBehavior.REPLACE)
+            OutputSettings.setBehavior(
+                this,
+                when (position) {
+                    1 -> ExistingFileBehavior.SKIP
+                    2 -> ExistingFileBehavior.REPLACE
+                    else -> ExistingFileBehavior.KEEP_BOTH
+                }
+            )
             updateFileBehavior()
         }
         revealButton.setOnClickListener {
@@ -148,8 +155,12 @@ class AdvancedActivity : AppCompatActivity() {
                 fileBehaviorDropdown.setText("Auto rename", false)
                 fileBehaviorLayout.helperText = "Keeps the existing file and adds (1), (2), …"
             }
+            ExistingFileBehavior.SKIP -> {
+                fileBehaviorDropdown.setText("Skip", false)
+                fileBehaviorLayout.helperText = "Keeps the existing file and skips saving a duplicate"
+            }
             ExistingFileBehavior.REPLACE -> {
-                fileBehaviorDropdown.setText("Overwrite", false)
+                fileBehaviorDropdown.setText("Replace", false)
                 fileBehaviorLayout.helperText = "Replaces the existing file after validation"
             }
         }

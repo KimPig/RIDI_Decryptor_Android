@@ -191,7 +191,7 @@ app/src/main/java/com/kimpig/rididecryptor/
 ├── root/       Narrow root reads, local metadata, and Realm snapshots
 ├── storage/    Output destinations, collision handling, and private cleanup
 ├── ui/         Library and series presentation
-└── *.kt        Main, Advanced, Details, and Realm inspector screens
+└── *.kt        Main, Settings, Details, and Realm inspector screens
 ```
 
 The decryption core works on ordinary app-owned copies. Shizuku and ADB-assisted source adapters are possible future additions but are not currently implemented.

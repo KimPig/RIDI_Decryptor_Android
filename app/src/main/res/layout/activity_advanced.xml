@@ -13,7 +13,7 @@
         android:background="@color/surface"
         app:navigationIcon="@drawable/ic_arrow_back_24"
         app:navigationIconTint="@color/text_primary"
-        app:title="Advanced"
+        app:title="@string/settings"
         app:titleTextColor="@color/text_primary" />
 
     <ScrollView
@@ -58,13 +58,14 @@
                     android:textAllCaps="false" />
             </LinearLayout>
 
-            <TextView style="@style/SectionTitle" android:layout_marginTop="24dp" android:text="Existing file behavior" />
+            <TextView style="@style/SectionTitle" android:layout_marginTop="24dp" android:text="File handling" />
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/fileBehaviorLayout"
                 style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
+                android:hint="Existing files"
                 app:helperText="Keeps the existing file and adds (1), (2), …">
                 <AutoCompleteTextView
                     android:id="@+id/fileBehaviorDropdown"

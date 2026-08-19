@@ -55,6 +55,25 @@ class RootShell {
         }
     }
 
+    fun readFilePrefix(source: String, maxBytes: Int): ByteArray {
+        require(maxBytes in 1..4096)
+        return openRootInput(source).use { input ->
+            val buffer = ByteArray(maxBytes)
+            var total = 0
+            while (total < maxBytes) {
+                val count = input.read(buffer, total, maxBytes - total)
+                if (count < 0) break
+                total += count
+            }
+            buffer.copyOf(total)
+        }
+    }
+
+    fun fileLength(source: String): Long {
+        val value = text("stat -c %s ${quote(source)} 2>/dev/null", 20).trim()
+        return value.toLongOrNull() ?: throw IOException("Root could not read the output file size")
+    }
+
     fun copyFile(source: String, destination: File, timeoutSeconds: Long = 600) {
         // The privileged side is input-only. All writes target a normal app-owned File.
         requireNonOfficialDestination(destination)
