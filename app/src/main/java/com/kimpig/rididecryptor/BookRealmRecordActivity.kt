@@ -40,8 +40,7 @@ class BookRealmRecordActivity : AppCompatActivity() {
     }
 
     private fun loadRecord(bookId: String) {
-        val roots = AppSession.scanResult?.dataRoots.orEmpty()
-        if (roots.isEmpty()) {
+        if (AppSession.scanResult == null) {
             status.text = "Run Scan Library first."
             return
         }
@@ -52,7 +51,6 @@ class BookRealmRecordActivity : AppCompatActivity() {
                 withContext(Dispatchers.IO) {
                     RealmDebugReader().read(
                         this@BookRealmRecordActivity,
-                        roots,
                         selectedClass = "Book",
                         limit = 100,
                         query = bookId

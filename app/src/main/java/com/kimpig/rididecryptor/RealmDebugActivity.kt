@@ -20,7 +20,6 @@ import com.kimpig.rididecryptor.root.RealmDebugReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 class RealmDebugActivity : AppCompatActivity() {
     private lateinit var status: TextView
@@ -36,7 +35,6 @@ class RealmDebugActivity : AppCompatActivity() {
     private var offset = 0
     private var spinnerReady = false
     private val realmReader = RealmDebugReader()
-    private var realmSnapshot: File? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,15 +63,8 @@ class RealmDebugActivity : AppCompatActivity() {
         }
     }
 
-    override fun onDestroy() {
-        realmReader.deleteSnapshot(realmSnapshot)
-        realmSnapshot = null
-        super.onDestroy()
-    }
-
     private fun load(refreshSnapshot: Boolean = false) {
-        val roots = AppSession.scanResult?.dataRoots.orEmpty()
-        if (roots.isEmpty()) {
+        if (AppSession.scanResult == null) {
             status.text = "Return to Library and run Scan Library first."
             return
         }
@@ -81,13 +72,7 @@ class RealmDebugActivity : AppCompatActivity() {
         lifecycleScope.launch {
             runCatching {
                 withContext(Dispatchers.IO) {
-                    if (refreshSnapshot) {
-                        realmReader.deleteSnapshot(realmSnapshot)
-                        realmSnapshot = null
-                    }
-                    val snapshot = realmSnapshot ?: realmReader.createSnapshot(this@RealmDebugActivity, roots).also {
-                        realmSnapshot = it
-                    }
+                    val snapshot = realmReader.sessionSnapshot(this@RealmDebugActivity)
                     realmReader.readSnapshot(
                         this@RealmDebugActivity,
                         snapshot,

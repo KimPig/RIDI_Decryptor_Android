@@ -27,7 +27,8 @@ object PrivateCacheManager {
         "realm-snapshot",
         "realm-debug-snapshot",
         "official-cover-snapshots",
-        "official-index-snapshots"
+        "official-index-snapshots",
+        "scan-session"
     )
 
     fun inspect(context: Context, scope: PrivateCacheScope): PrivateCacheSummary =

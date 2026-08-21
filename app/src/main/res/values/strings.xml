@@ -25,7 +25,6 @@
     <string name="library">Library</string>
     <string name="details">Details</string>
     <string name="select_book_to_decrypt">Select a book to decrypt</string>
-    <string name="zero_books">0 books</string>
     <string name="output_folder">Output folder</string>
     <string name="change_folder">Change folder</string>
     <string name="use_default">Use default</string>
@@ -50,8 +49,4 @@
     <string name="downloaded_books">Your downloaded books</string>
     <string name="personal_use_warning">For personal archival only · Never share decrypted files</string>
     <string name="privacy_warning">Decrypted files may retain account, transaction, device, or forensic identifying information. Never share or redistribute them. Use only for personal archival of content you legally purchased or rented.</string>
-    <plurals name="book_count">
-        <item quantity="one">%d book</item>
-        <item quantity="other">%d books</item>
-    </plurals>
 </resources>

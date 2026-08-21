@@ -1,6 +1,7 @@
 package com.kimpig.rididecryptor.root
 
 import android.content.Context
+import com.kimpig.rididecryptor.storage.ScanSessionStore
 import io.realm.Case
 import io.realm.DynamicRealm
 import io.realm.Realm
@@ -19,37 +20,18 @@ data class RealmDebugPage(
     val records: List<Map<String, String>>
 )
 
-class RealmDebugReader(private val shell: RootShell = RootShell()) {
-    fun createSnapshot(context: Context, dataRoots: List<String>): File {
-        val source = dataRoots.asSequence().map { it.trimEnd('/') + "/files/Library.realm" }
-            .firstOrNull(shell::isRegularFile)
-            ?: throw IllegalStateException("Library.realm was not found")
-        val snapshotDir = File(context.cacheDir, "realm-debug-snapshot/${System.nanoTime()}")
-        val snapshot = File(snapshotDir, "Library.realm")
-        snapshotDir.mkdirs()
-        return try {
-            shell.copyFile(source, snapshot, timeoutSeconds = 120)
-            snapshot
-        } catch (error: Throwable) {
-            snapshotDir.deleteRecursively()
-            throw error
-        }
-    }
+class RealmDebugReader {
+    fun sessionSnapshot(context: Context): File = ScanSessionStore.activeRealm(context)
+        ?: throw IllegalStateException("No Realm scan snapshot is loaded. Run Scan Library first")
 
     fun read(
         context: Context,
-        dataRoots: List<String>,
         selectedClass: String? = null,
         offset: Int = 0,
         limit: Int = 50,
         query: String = ""
     ): RealmDebugPage {
-        val snapshot = createSnapshot(context, dataRoots)
-        try {
-            return readSnapshot(context, snapshot, selectedClass, offset, limit, query)
-        } finally {
-            deleteSnapshot(snapshot)
-        }
+        return readSnapshot(context, sessionSnapshot(context), selectedClass, offset, limit, query)
     }
 
     fun readSnapshot(
@@ -65,10 +47,6 @@ class RealmDebugReader(private val shell: RootShell = RootShell()) {
         }
         Realm.init(context.applicationContext)
         return parse(snapshot, selectedClass, offset, limit, query)
-    }
-
-    fun deleteSnapshot(snapshot: File?) {
-        snapshot?.parentFile?.deleteRecursively()
     }
 
     private fun parse(snapshot: File, requestedClass: String?, offset: Int, limit: Int, query: String): RealmDebugPage {

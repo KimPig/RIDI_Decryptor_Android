@@ -10,6 +10,7 @@ import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -27,6 +28,7 @@ import com.kimpig.rididecryptor.root.RidiRootSource
 import com.kimpig.rididecryptor.root.RootScanResult
 import com.kimpig.rididecryptor.storage.OutputSettings
 import com.kimpig.rididecryptor.storage.OutputStore
+import com.kimpig.rididecryptor.storage.ScanSessionStore
 import com.kimpig.rididecryptor.ui.BookAdapter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -42,10 +44,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var grantRootButton: Button
     private lateinit var bookList: RecyclerView
     private lateinit var emptyView: TextView
-    private lateinit var bookCount: TextView
     private lateinit var decryptButton: Button
     private lateinit var detailsButton: Button
     private lateinit var selectAllButton: Button
+    private lateinit var cancelSelectionButton: Button
     private lateinit var progressBar: ProgressBar
     private lateinit var progressText: TextView
     private lateinit var statusText: TextView
@@ -60,6 +62,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var adapter: BookAdapter
     private var deviceId = ""
     private var busy = false
+    private var officialAccessPending = false
+    private val selectionBack = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() { adapter.exitMultiSelect() }
+    }
 
     private val storagePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         status(if (granted) "Storage permission granted. Tap Decrypt again." else "Storage permission is required on Android 7-9.")
@@ -67,30 +73,39 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppSession.initialize(applicationContext)
         setContentView(R.layout.activity_main)
         bindViews()
-        adapter = BookAdapter { candidate, selected ->
-            if (selected) selectedBooks[candidate.bookId] = candidate else selectedBooks.remove(candidate.bookId)
-            updateSelectionControls()
-            status("${selectedBooks.size} book(s) selected.")
-        }
+        adapter = BookAdapter(
+            onSelectionChanged = { candidate, selected ->
+                if (selected) selectedBooks[candidate.bookId] = candidate else selectedBooks.remove(candidate.bookId)
+                updateSelectionControls()
+            },
+            onSelectionModeChanged = {
+                selectionBack.isEnabled = it
+                updateSelectionControls()
+            }
+        )
+        onBackPressedDispatcher.addCallback(this, selectionBack)
         bookList.layoutManager = LinearLayoutManager(this)
         bookList.adapter = adapter
 
-        scanButton.setOnClickListener { scanRootLibrary() }
+        scanButton.setOnClickListener { requestLibraryScan() }
         grantRootButton.setOnClickListener { requestRootAccess() }
         helpButton.setOnClickListener { showHelp() }
         advancedButton.setOnClickListener { startActivity(Intent(this, AdvancedActivity::class.java)) }
         selectAllButton.setOnClickListener {
-            if (adapter.allSelected()) adapter.clearSelection() else adapter.selectAll()
+            if (adapter.allSelected()) adapter.deselectAll() else adapter.selectAll()
             updateSelectionControls()
         }
-        decryptButton.setOnClickListener { decryptSelected() }
+        cancelSelectionButton.setOnClickListener { adapter.exitMultiSelect() }
+        decryptButton.setOnClickListener { requestDecryptSelected() }
         detailsButton.setOnClickListener {
             val book = selectedBooks.values.singleOrNull() ?: return@setOnClickListener
             AppSession.detailBook = book
             startActivity(Intent(this, BookDetailsActivity::class.java))
         }
+        updateSelectionControls()
         versionText.text = "v${displayVersion()}"
         checkRootAtLaunch()
     }
@@ -103,6 +118,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onDestroy() {
+        if (isFinishing && !isChangingConfigurations) ScanSessionStore.clear(applicationContext)
+        super.onDestroy()
+    }
+
     private fun bindViews() {
         rootGate = findViewById(R.id.rootGate)
         mainContent = findViewById(R.id.mainContent)
@@ -112,10 +132,10 @@ class MainActivity : AppCompatActivity() {
         grantRootButton = findViewById(R.id.grantRootButton)
         bookList = findViewById(R.id.bookList)
         emptyView = findViewById(R.id.emptyView)
-        bookCount = findViewById(R.id.bookCount)
         decryptButton = findViewById(R.id.decryptButton)
         detailsButton = findViewById(R.id.detailsButton)
         selectAllButton = findViewById(R.id.selectAllButton)
+        cancelSelectionButton = findViewById(R.id.cancelSelectionButton)
         progressBar = findViewById(R.id.progressBar)
         progressText = findViewById(R.id.progressText)
         statusText = findViewById(R.id.statusText)
@@ -174,7 +194,76 @@ class MainActivity : AppCompatActivity() {
     private fun enterMain() {
         rootGate.visibility = View.GONE
         mainContent.visibility = View.VISIBLE
-        scanRootLibrary()
+        requestLibraryScan()
+    }
+
+    private fun requestLibraryScan() {
+        withOfficialAppAccess("scan the local library", ::scanRootLibrary)
+    }
+
+    private fun requestDecryptSelected() {
+        if (selectedBooks.values.none { it.sourceKind == SourceKind.ROOT }) {
+            decryptSelected()
+            return
+        }
+        withOfficialAppAccess("copy the selected official files", ::decryptSelected)
+    }
+
+    private fun withOfficialAppAccess(operation: String, action: () -> Unit) {
+        if (busy || officialAccessPending) return
+        if (!OutputSettings.stopOfficialAppBeforeAccess(this)) {
+            action()
+            return
+        }
+        officialAccessPending = true
+        setBusy(true)
+        status("Checking the official RIDI app before attempting to $operation…")
+        lifecycleScope.launch {
+            val running = runCatching { withContext(Dispatchers.IO) { rootSource.isOfficialAppRunning() } }
+            setBusy(false)
+            running.onFailure { error ->
+                officialAccessPending = false
+                status("Could not verify the official RIDI app state: ${error.message ?: error.javaClass.simpleName}")
+            }.onSuccess { isRunning ->
+                if (!isRunning) {
+                    officialAccessPending = false
+                    action()
+                    return@onSuccess
+                }
+                MaterialAlertDialogBuilder(this@MainActivity)
+                    .setTitle("Close the official RIDI app?")
+                    .setMessage(
+                        "The official app is running. Closing it first prevents reading a changing database or an incomplete download. " +
+                            "Any reading or download currently in progress will stop."
+                    )
+                    .setNegativeButton("Cancel") { _, _ ->
+                        officialAccessPending = false
+                        status("Operation cancelled.")
+                    }
+                    .setPositiveButton("Close and continue") { _, _ -> stopOfficialAppThen(action) }
+                    .setOnCancelListener {
+                        officialAccessPending = false
+                        status("Operation cancelled.")
+                    }
+                    .show()
+            }
+        }
+    }
+
+    private fun stopOfficialAppThen(action: () -> Unit) {
+        setBusy(true)
+        status("Closing the official RIDI app…")
+        lifecycleScope.launch {
+            val stopped = runCatching { withContext(Dispatchers.IO) { rootSource.stopOfficialAppAndWait() } }
+            setBusy(false)
+            stopped.onFailure { error ->
+                officialAccessPending = false
+                status("Could not close the official RIDI app: ${error.message ?: error.javaClass.simpleName}")
+            }.onSuccess { confirmed ->
+                officialAccessPending = false
+                if (confirmed) action() else status("The official RIDI app is still running. No official files were read.")
+            }
+        }
     }
 
     private fun scanRootLibrary() {
@@ -343,7 +432,8 @@ class MainActivity : AppCompatActivity() {
         scanButton.text = if (value) "Scanning…" else getString(R.string.scan_library)
         helpButton.isEnabled = !value
         advancedButton.isEnabled = !value
-        selectAllButton.isEnabled = !value && books.isNotEmpty()
+        selectAllButton.isEnabled = !value && books.isNotEmpty() && adapter.multiSelectMode
+        cancelSelectionButton.isEnabled = !value && adapter.multiSelectMode
         decryptButton.isEnabled = !value && selectedBooks.isNotEmpty()
         detailsButton.isEnabled = !value && selectedBooks.size == 1
     }
@@ -352,22 +442,26 @@ class MainActivity : AppCompatActivity() {
         val hasBooks = books.isNotEmpty()
         emptyView.visibility = if (hasBooks) View.GONE else View.VISIBLE
         bookList.visibility = if (hasBooks) View.VISIBLE else View.GONE
-        bookCount.text = resources.getQuantityString(R.plurals.book_count, books.size, books.size)
-        selectAllButton.isEnabled = hasBooks && !busy
+        selectAllButton.isEnabled = hasBooks && !busy && adapter.multiSelectMode
         adapter.submitList(books.toList())
         updateSelectionControls()
     }
 
     private fun updateSelectionControls() {
         val count = selectedBooks.size
+        selectAllButton.isEnabled = !busy && books.isNotEmpty() && adapter.multiSelectMode
+        cancelSelectionButton.isEnabled = !busy && adapter.multiSelectMode
         decryptButton.isEnabled = !busy && count > 0
         detailsButton.isEnabled = !busy && count == 1
+        detailsButton.visibility = if (adapter.multiSelectMode) View.GONE else View.VISIBLE
         decryptButton.text = when {
             count == 0 -> getString(R.string.select_book_to_decrypt)
             count == 1 -> getString(R.string.decrypt_selected)
-            else -> "Decrypt $count selected books"
+            else -> "Decrypt $count books"
         }
         selectAllButton.text = if (adapter.allSelected()) "Deselect all" else "Select all"
+        selectAllButton.visibility = if (adapter.multiSelectMode) View.VISIBLE else View.GONE
+        cancelSelectionButton.visibility = if (adapter.multiSelectMode) View.VISIBLE else View.GONE
     }
 
     private fun refreshOutputStatus() {

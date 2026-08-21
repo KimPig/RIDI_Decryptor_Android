@@ -7,6 +7,7 @@ import com.kimpig.rididecryptor.core.BookCandidate
 import com.kimpig.rididecryptor.core.CandidateDiscovery
 import com.kimpig.rididecryptor.core.PreferenceXmlParser
 import com.kimpig.rididecryptor.core.PreparedBook
+import com.kimpig.rididecryptor.storage.ScanSessionStore
 import java.io.File
 import java.io.IOException
 
@@ -43,6 +44,10 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
 
     fun requestRootAccess(): Boolean = shell.requestRootAccess()
 
+    fun isOfficialAppRunning(): Boolean = shell.isPackageRunning(OFFICIAL_PACKAGE)
+
+    fun stopOfficialAppAndWait(): Boolean = shell.forceStopPackageAndWait(OFFICIAL_PACKAGE)
+
     fun scan(context: Context): RootScanResult {
         if (!shell.isAvailable()) throw IOException("Root access was not granted")
         val currentUser = currentUserId()
@@ -54,12 +59,16 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
             addAll(fallbackDataRoots)
         }.distinct().filter(::isSafeRidiDataRoot)
 
+        val staging = ScanSessionStore.begin(context)
+        try {
+
         val preferences = readPreferences(dataRoots, currentUser, packageInstalled = true)
+        File(staging.source, "preferences.xml").writeText(preferences)
         val deviceId = PreferenceXmlParser.deviceId(preferences)
             ?: throw RidiDeviceInfoMissingException("device_id was not found in the official app preferences")
 
         val metadataAttempt = runCatching {
-            OfficialLibraryMetadataReader(shell).read(context, dataRoots)
+            OfficialLibraryMetadataReader(shell).read(context, dataRoots, File(staging.source, "Library.realm"))
         }.onFailure { error ->
             Log.w(LOG_TAG, "Local library metadata unavailable: ${error.javaClass.simpleName}")
         }
@@ -97,12 +106,8 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
             .groupBy(BookCandidate::bookId)
             .map { (bookId, matches) -> matches.maxBy { score(it, metadata[bookId]?.savedPath) } }
 
-        val coverDirectory = File(context.cacheDir, "official-cover-snapshots")
-        coverDirectory.deleteRecursively()
-        coverDirectory.mkdirs()
-        val indexDirectory = File(context.cacheDir, "official-index-snapshots")
-        indexDirectory.deleteRecursively()
-        indexDirectory.mkdirs()
+        val coverDirectory = staging.covers
+        val indexDirectory = staging.indexes
 
         val books = candidates.map { candidate ->
             val details = metadata[candidate.bookId]
@@ -128,18 +133,28 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
             )
         }.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.displayTitle })
 
+        coverDirectory.listFiles().orEmpty().filter { it.name.endsWith(".pending") }.forEach(File::delete)
+
         val metadataCount = books.count { it.label != it.bookId }
         Log.i(LOG_TAG, "Local scan completed: books=${books.size}, titled=$metadataCount")
+        val active = ScanSessionStore.commit(context, staging, books)
+        val committedBooks = books.map { book ->
+            book.copy(coverCachePath = ScanSessionStore.remap(book.coverCachePath, staging, active))
+        }
         return RootScanResult(
             deviceId,
-            books,
+            committedBooks,
             metadataCount,
             metadataIssue,
             currentUser,
-            books.count { it.sourceRoot.startsWith("/data/") },
-            books.count { !it.sourceRoot.startsWith("/data/") },
+            committedBooks.count { it.sourceRoot.startsWith("/data/") },
+            committedBooks.count { !it.sourceRoot.startsWith("/data/") },
             dataRoots
         )
+        } catch (error: Throwable) {
+            ScanSessionStore.abort(staging)
+            throw error
+        }
     }
 
     fun materialize(
@@ -175,7 +190,10 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
                 val target = File(destination, name)
                 return runCatching {
                     requireSafeOfficialPath(source)
-                    shell.copyFile(source, target, timeoutSeconds = 60)
+                    val pending = File(destination, target.name + ".pending").apply { delete() }
+                    shell.copyFile(source, pending, timeoutSeconds = 60)
+                    if (target.exists() && !target.delete()) throw IOException("Could not replace cached cover")
+                    if (!pending.renameTo(target)) throw IOException("Could not commit cached cover")
                     target.absolutePath
                 }.getOrNull()
             }
@@ -190,7 +208,10 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
         return runCatching {
             requireSafeOfficialPath(source)
             val target = File(destination, "${candidate.bookId}.idx")
-            shell.copyFile(source, target, timeoutSeconds = 60)
+            val pending = File(destination, target.name + ".pending").apply { delete() }
+            shell.copyFile(source, pending, timeoutSeconds = 60)
+            if (target.exists() && !target.delete()) throw IOException("Could not replace cached comic index")
+            if (!pending.renameTo(target)) throw IOException("Could not commit cached comic index")
             ComicIndexReader.read(target)
         }.getOrNull()
     }
@@ -279,6 +300,7 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
     }
 
     companion object {
+        const val OFFICIAL_PACKAGE = "com.initialcoms.ridi"
         private const val LOG_TAG = "RidiDecryptor"
     }
 }

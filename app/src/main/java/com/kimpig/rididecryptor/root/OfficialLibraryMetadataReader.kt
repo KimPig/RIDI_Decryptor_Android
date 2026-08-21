@@ -27,7 +27,7 @@ data class LocalBookMetadata(
 )
 
 class OfficialLibraryMetadataReader(private val shell: RootShell) {
-    fun read(context: Context, dataRoots: List<String>): Map<String, LocalBookMetadata> {
+    fun read(context: Context, dataRoots: List<String>, snapshot: File): Map<String, LocalBookMetadata> {
         Realm.init(context.applicationContext)
         val realmPaths = dataRoots.flatMap { root ->
             listOf(
@@ -44,16 +44,14 @@ class OfficialLibraryMetadataReader(private val shell: RootShell) {
 
         var firstError: Throwable? = null
         existingRealmPaths.forEach { source ->
-            val snapshotDir = File(context.cacheDir, "realm-snapshot/${System.nanoTime()}")
-            val snapshot = File(snapshotDir, "Library.realm")
             try {
-                snapshotDir.mkdirs()
+                snapshot.parentFile?.mkdirs()
+                snapshot.delete()
                 shell.copyFile(source, snapshot, timeoutSeconds = 120)
                 return parse(snapshot)
             } catch (error: Throwable) {
+                snapshot.delete()
                 if (firstError == null) firstError = error
-            } finally {
-                snapshotDir.deleteRecursively()
             }
         }
         throw firstError ?: IllegalStateException("Official library metadata was not found")

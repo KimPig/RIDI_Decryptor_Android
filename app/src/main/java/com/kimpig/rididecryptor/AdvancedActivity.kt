@@ -16,6 +16,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.switchmaterial.SwitchMaterial
 import com.google.android.material.textfield.TextInputLayout
 import com.kimpig.rididecryptor.core.ManualPackageImporter
 import com.kimpig.rididecryptor.root.RootEnvironmentReader
@@ -40,6 +41,7 @@ class AdvancedActivity : AppCompatActivity() {
     private lateinit var fileBehaviorLayout: TextInputLayout
     private lateinit var removeImportsButton: Button
     private lateinit var clearTemporaryButton: Button
+    private lateinit var stopOfficialAppSwitch: SwitchMaterial
     private var revealed = false
 
     private val openOutputTree = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -87,6 +89,7 @@ class AdvancedActivity : AppCompatActivity() {
         fileBehaviorLayout = findViewById(R.id.fileBehaviorLayout)
         removeImportsButton = findViewById(R.id.removeImportsButton)
         clearTemporaryButton = findViewById(R.id.clearTemporaryButton)
+        stopOfficialAppSwitch = findViewById(R.id.stopOfficialAppSwitch)
 
         findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener { finish() }
         findViewById<Button>(R.id.changeOutputButton).setOnClickListener { openOutputTree.launch(OutputSettings.outputTree(this)) }
@@ -120,6 +123,10 @@ class AdvancedActivity : AppCompatActivity() {
         }
         removeImportsButton.setOnClickListener { prepareCleanup(PrivateCacheScope.IMPORTED_PACKAGES) }
         clearTemporaryButton.setOnClickListener { prepareCleanup(PrivateCacheScope.TEMPORARY_FILES) }
+        stopOfficialAppSwitch.isChecked = OutputSettings.stopOfficialAppBeforeAccess(this)
+        stopOfficialAppSwitch.setOnCheckedChangeListener { _, checked ->
+            OutputSettings.setStopOfficialAppBeforeAccess(this, checked)
+        }
 
         updateOutputDescription()
         updateFileBehavior()

@@ -78,7 +78,8 @@ data class BookCandidate(
     val storageState: String
         get() = when {
             sourceKind == SourceKind.MANUAL -> "App cache"
-            sourceRoot.startsWith("/data/") -> "Internal storage"
+            sourceRoot.startsWith("/data/") || sourceRoot.startsWith("/storage/emulated/") ||
+                sourceRoot.startsWith("/sdcard/") -> "Internal storage"
             else -> "SD card"
         }
 

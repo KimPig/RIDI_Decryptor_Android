@@ -74,6 +74,27 @@ class RootShell {
         return value.toLongOrNull() ?: throw IOException("Root could not read the output file size")
     }
 
+    fun isPackageRunning(packageName: String): Boolean {
+        require(SAFE_PACKAGE.matches(packageName)) { "Invalid package name" }
+        val value = text(
+            "ps -A 2>/dev/null | awk -v n=${quote(packageName)} " +
+                "'\$NF == n || index(\$NF, n \":\") == 1 { print \$NF; exit }'; :",
+            20
+        )
+        return value.lineSequence().any { it == packageName || it.startsWith("$packageName:") }
+    }
+
+    fun forceStopPackageAndWait(packageName: String): Boolean {
+        require(SAFE_PACKAGE.matches(packageName)) { "Invalid package name" }
+        val result = execute("am force-stop --user current ${quote(packageName)}", 20)
+        if (result.exitCode != 0) throw IOException("Could not stop the official app: ${result.stderr.take(160)}")
+        repeat(12) {
+            if (!isPackageRunning(packageName)) return true
+            Thread.sleep(150)
+        }
+        return !isPackageRunning(packageName)
+    }
+
     fun copyFile(source: String, destination: File, timeoutSeconds: Long = 600) {
         // The privileged side is input-only. All writes target a normal app-owned File.
         requireNonOfficialDestination(destination)
@@ -129,6 +150,7 @@ class RootShell {
     }
 
     companion object {
+        private val SAFE_PACKAGE = Regex("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")
         init {
             Shell.setDefaultBuilder(
                 Shell.Builder.create()
