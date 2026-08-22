@@ -9,4 +9,4 @@ RIDI Decryptor for Android is designed as an offline application.
 - Working copies are stored in this app's private cache and removed after the export attempt.
 - Successful files are written to `Download/RIDI_Decryptor`.
 
-Decrypted content can still contain user-identifying information embedded by the content provider. Do not share or redistribute exported files.
+For EPUB output, the app removes the specifically observed standalone 66-character `U+2060`/`U+2063` sequences and OPF `book-token` metadata from its private working copy, then validates and rescans the rebuilt archive. Other identifiers, watermark forms, transaction data, or forensic differences may still remain. Do not share or redistribute exported files.

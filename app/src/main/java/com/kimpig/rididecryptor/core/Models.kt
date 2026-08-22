@@ -21,6 +21,7 @@ data class BookCandidate(
     val downloadedAt: Date? = null,
     val lastOpenedAt: Date? = null,
     val isDownloaded: Boolean? = null,
+    val invalidatedType: String? = null,
     val comicQuality: String? = null,
     val seriesId: String? = null,
     val seriesTitle: String? = null,
@@ -97,6 +98,27 @@ data class BookCandidate(
             Calendar.getInstance().apply { time = date }.get(Calendar.YEAR) >= 9999
         } == true
 
+    val officialAccessNotice: String?
+        get() = when (invalidatedType?.trim()?.lowercase()) {
+            "not_owner" -> "Not available to the current account · Local files retained"
+            "unregistered_device" -> "Official device registration unavailable · Local files retained"
+            "deleted" -> "Removed from the current library · Local files retained"
+            "expired" -> if (hasRequiredLocalFiles) {
+                "Rental expired · Still decryptable"
+            } else {
+                "Rental expired · Incomplete local files"
+            }
+            null, "" -> null
+            else -> "Official app status: ${invalidatedType.trim()}"
+        }
+
+    val officialAccessState: String
+        get() = when {
+            sourceKind == SourceKind.MANUAL -> "Imported local package"
+            officialAccessNotice != null -> officialAccessNotice!!
+            else -> "No account restriction recorded by the official app"
+        }
+
     val localComicPages: Int?
         get() {
             val cover = comicIndexCoverCount ?: return null
@@ -154,7 +176,8 @@ data class DecryptResult(
     val temporaryFile: File,
     val format: String,
     val sha256: String,
-    val itemCount: Int? = null
+    val itemCount: Int? = null,
+    val warnings: List<String> = emptyList()
 )
 
 data class ProgressUpdate(

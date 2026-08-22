@@ -17,7 +17,9 @@ import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.switchmaterial.SwitchMaterial
+import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import androidx.core.widget.doAfterTextChanged
 import com.kimpig.rididecryptor.core.ManualPackageImporter
 import com.kimpig.rididecryptor.root.RootEnvironmentReader
 import com.kimpig.rididecryptor.storage.ExistingFileBehavior
@@ -34,6 +36,7 @@ class AdvancedActivity : AppCompatActivity() {
     private lateinit var outputValue: TextView
     private lateinit var rootEnvironmentValue: TextView
     private lateinit var rootProgress: ProgressBar
+    private lateinit var accountValue: TextView
     private lateinit var deviceValue: TextView
     private lateinit var revealButton: Button
     private lateinit var status: TextView
@@ -42,6 +45,10 @@ class AdvancedActivity : AppCompatActivity() {
     private lateinit var removeImportsButton: Button
     private lateinit var clearTemporaryButton: Button
     private lateinit var stopOfficialAppSwitch: SwitchMaterial
+    private lateinit var removeEpubMarkersSwitch: SwitchMaterial
+    private lateinit var normalizeTimestampsSwitch: SwitchMaterial
+    private lateinit var archiveTimestampLayout: TextInputLayout
+    private lateinit var archiveTimestampEdit: TextInputEditText
     private var revealed = false
 
     private val openOutputTree = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -82,6 +89,7 @@ class AdvancedActivity : AppCompatActivity() {
         outputValue = findViewById(R.id.outputValue)
         rootEnvironmentValue = findViewById(R.id.rootEnvironmentValue)
         rootProgress = findViewById(R.id.rootProgress)
+        accountValue = findViewById(R.id.accountValue)
         deviceValue = findViewById(R.id.deviceValue)
         revealButton = findViewById(R.id.revealButton)
         status = findViewById(R.id.advancedStatus)
@@ -90,6 +98,10 @@ class AdvancedActivity : AppCompatActivity() {
         removeImportsButton = findViewById(R.id.removeImportsButton)
         clearTemporaryButton = findViewById(R.id.clearTemporaryButton)
         stopOfficialAppSwitch = findViewById(R.id.stopOfficialAppSwitch)
+        removeEpubMarkersSwitch = findViewById(R.id.removeEpubMarkersSwitch)
+        normalizeTimestampsSwitch = findViewById(R.id.normalizeTimestampsSwitch)
+        archiveTimestampLayout = findViewById(R.id.archiveTimestampLayout)
+        archiveTimestampEdit = findViewById(R.id.archiveTimestampEdit)
 
         findViewById<MaterialToolbar>(R.id.toolbar).setNavigationOnClickListener { finish() }
         findViewById<Button>(R.id.changeOutputButton).setOnClickListener { openOutputTree.launch(OutputSettings.outputTree(this)) }
@@ -127,11 +139,39 @@ class AdvancedActivity : AppCompatActivity() {
         stopOfficialAppSwitch.setOnCheckedChangeListener { _, checked ->
             OutputSettings.setStopOfficialAppBeforeAccess(this, checked)
         }
+        removeEpubMarkersSwitch.isChecked = OutputSettings.removeEpubPrivacyMarkers(this)
+        removeEpubMarkersSwitch.setOnCheckedChangeListener { _, checked ->
+            OutputSettings.setRemoveEpubPrivacyMarkers(this, checked)
+        }
+        normalizeTimestampsSwitch.isChecked = OutputSettings.normalizeArchiveTimestamps(this)
+        archiveTimestampEdit.setText(OutputSettings.archiveTimestampText(this))
+        updateArchiveTimestampState()
+        normalizeTimestampsSwitch.setOnCheckedChangeListener { _, checked ->
+            OutputSettings.setNormalizeArchiveTimestamps(this, checked)
+            updateArchiveTimestampState()
+        }
+        archiveTimestampEdit.doAfterTextChanged { editable ->
+            val value = editable?.toString().orEmpty()
+            val valid = OutputSettings.parseArchiveTimestamp(value) != null
+            archiveTimestampLayout.error = if (valid) null else "Use yyyy-MM-dd HH:mm:ss"
+            if (valid) OutputSettings.setArchiveTimestampText(this, value.trim())
+        }
 
         updateOutputDescription()
         updateFileBehavior()
+        updateAccountId()
         updateDeviceId()
         loadRootEnvironment()
+    }
+
+    private fun updateArchiveTimestampState() {
+        val enabled = normalizeTimestampsSwitch.isChecked
+        archiveTimestampLayout.isEnabled = enabled
+        if (!enabled) archiveTimestampLayout.error = null
+    }
+
+    private fun updateAccountId() {
+        accountValue.text = AppSession.scanResult?.currentAccountId ?: "Signed out or unavailable"
     }
 
     private fun updateDeviceId() {

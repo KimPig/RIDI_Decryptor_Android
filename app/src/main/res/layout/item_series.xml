@@ -21,19 +21,52 @@
         android:padding="16dp">
 
         <FrameLayout
-            android:layout_width="64dp"
-            android:layout_height="88dp">
+            android:layout_width="76dp"
+            android:layout_height="92dp"
+            android:clipChildren="false"
+            android:clipToPadding="false">
+            <ImageView
+                android:id="@+id/seriesCoverBack"
+                android:layout_width="56dp"
+                android:layout_height="78dp"
+                android:layout_gravity="start|bottom"
+                android:layout_marginStart="16dp"
+                android:layout_marginBottom="8dp"
+                android:background="@color/surface"
+                android:contentDescription="Series cover"
+                android:elevation="1dp"
+                android:padding="1dp"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+            <ImageView
+                android:id="@+id/seriesCoverMiddle"
+                android:layout_width="56dp"
+                android:layout_height="78dp"
+                android:layout_gravity="start|bottom"
+                android:layout_marginStart="8dp"
+                android:layout_marginBottom="4dp"
+                android:background="@color/surface"
+                android:contentDescription="Series cover"
+                android:elevation="2dp"
+                android:padding="1dp"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
             <ImageView
                 android:id="@+id/seriesCover"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_width="56dp"
+                android:layout_height="78dp"
+                android:layout_gravity="start|bottom"
+                android:background="@color/surface"
                 android:contentDescription="Series cover"
+                android:elevation="3dp"
+                android:padding="1dp"
                 android:scaleType="fitCenter"
                 android:visibility="gone" />
             <TextView
                 android:id="@+id/seriesPlaceholder"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
+                android:layout_width="64dp"
+                android:layout_height="88dp"
+                android:layout_gravity="start|center_vertical"
                 android:background="@drawable/bg_format_badge"
                 android:gravity="center"
                 android:text="SERIES"

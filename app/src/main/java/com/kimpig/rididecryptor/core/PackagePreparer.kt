@@ -26,6 +26,7 @@ class PackagePreparer {
                 val target = safeTarget(extracted, entry.name)
                 if (entry.isDirectory) {
                     target.mkdirs()
+                    if (entry.time >= 0L) target.setLastModified(entry.time)
                     continue
                 }
                 target.parentFile?.mkdirs()
@@ -43,6 +44,7 @@ class PackagePreparer {
                         }
                     }
                 }
+                if (entry.time >= 0L) target.setLastModified(entry.time)
             }
         }
         return PreparedBook(book.bookId, extracted, book.title)

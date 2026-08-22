@@ -85,7 +85,7 @@ object ScanSessionStore {
                 """CREATE TABLE books (
                     book_id TEXT PRIMARY KEY, title TEXT NOT NULL, author TEXT, format TEXT,
                     series_id TEXT, series_title TEXT, display_order INTEGER, source_root TEXT NOT NULL,
-                    cover_name TEXT, page_count INTEGER, scanned_at INTEGER NOT NULL
+                    cover_name TEXT, page_count INTEGER, invalidated_type TEXT, scanned_at INTEGER NOT NULL
                 )""".trimIndent()
             )
             db.beginTransaction()
@@ -102,6 +102,7 @@ object ScanSessionStore {
                         put("source_root", book.sourceRoot)
                         put("cover_name", book.coverCachePath?.substringAfterLast(File.separatorChar))
                         put("page_count", book.displayedComicPages)
+                        put("invalidated_type", book.invalidatedType)
                         put("scanned_at", System.currentTimeMillis())
                     })
                 }

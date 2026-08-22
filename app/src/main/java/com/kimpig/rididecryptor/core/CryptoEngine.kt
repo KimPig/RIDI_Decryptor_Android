@@ -21,7 +21,9 @@ class CryptoEngine {
         book: PreparedBook,
         deviceId: String,
         outputDirectory: File,
-        progress: (ProgressUpdate) -> Unit = {}
+        progress: (ProgressUpdate) -> Unit = {},
+        removeEpubPrivacyMarkers: Boolean = true,
+        normalizedArchiveTimestampMillis: Long? = null
     ): DecryptResult {
         require(deviceId.length >= 18) { "Device ID is missing or too short" }
         if (!outputDirectory.mkdirs() && !outputDirectory.isDirectory) {
@@ -36,16 +38,16 @@ class CryptoEngine {
             ?: files.firstOrNull { it.extension.equals("dat", true) }
 
         files.firstOrNull { it.name.equals("${book.bookId}.epub", true) }
-            ?.let { return publication(book, it, publicationKey(it, "epub", dat, deviceId), "epub", outputDirectory, progress) }
+            ?.let { return publication(book, it, publicationKey(it, "epub", dat, deviceId), "epub", outputDirectory, progress, removeEpubPrivacyMarkers, normalizedArchiveTimestampMillis) }
         files.firstOrNull { it.name.equals("${book.bookId}.pdf", true) }
-            ?.let { return publication(book, it, publicationKey(it, "pdf", dat, deviceId), "pdf", outputDirectory, progress) }
+            ?.let { return publication(book, it, publicationKey(it, "pdf", dat, deviceId), "pdf", outputDirectory, progress, removeEpubPrivacyMarkers, normalizedArchiveTimestampMillis) }
         files.firstOrNull { it.extension.equals("epub", true) }
-            ?.let { return publication(book, it, publicationKey(it, "epub", dat, deviceId), "epub", outputDirectory, progress) }
+            ?.let { return publication(book, it, publicationKey(it, "epub", dat, deviceId), "epub", outputDirectory, progress, removeEpubPrivacyMarkers, normalizedArchiveTimestampMillis) }
         files.firstOrNull { it.extension.equals("pdf", true) }
-            ?.let { return publication(book, it, publicationKey(it, "pdf", dat, deviceId), "pdf", outputDirectory, progress) }
+            ?.let { return publication(book, it, publicationKey(it, "pdf", dat, deviceId), "pdf", outputDirectory, progress, removeEpubPrivacyMarkers, normalizedArchiveTimestampMillis) }
 
         val optionalComicKey = dat?.let { runCatching { contentKey(it, deviceId) }.getOrNull() }
-        return comic(book, files, optionalComicKey, deviceId, outputDirectory, progress)
+        return comic(book, files, optionalComicKey, deviceId, outputDirectory, progress, normalizedArchiveTimestampMillis)
     }
 
     private fun publicationKey(file: File, format: String, dat: File?, deviceId: String): ByteArray? {
@@ -108,11 +110,15 @@ class CryptoEngine {
         key: ByteArray?,
         format: String,
         outputDirectory: File,
-        progress: (ProgressUpdate) -> Unit
+        progress: (ProgressUpdate) -> Unit,
+        removeEpubPrivacyMarkers: Boolean,
+        normalizedArchiveTimestampMillis: Long?
     ): DecryptResult {
         val output = File(outputDirectory, "${safeOutputBaseName(book.title, book.bookId)}.$format")
         val partial = File(outputDirectory, output.name + ".partial")
+        val sanitized = File(outputDirectory, output.name + ".sanitized.partial")
         partial.delete()
+        sanitized.delete()
         if (isPlainPublication(encrypted, format)) {
             copyWithProgress(encrypted, partial, "Copying ${format.uppercase()}", progress)
         } else {
@@ -127,8 +133,29 @@ class CryptoEngine {
             partial.delete()
             throw IOException("${format.uppercase()} decryption validation failed")
         }
+        var finalPartial = partial
+        var warnings = emptyList<String>()
+        if (format == "epub" && (removeEpubPrivacyMarkers || normalizedArchiveTimestampMillis != null)) {
+            progress(ProgressUpdate("Inspecting EPUB privacy markers", 0, 1))
+            val postProcess = EpubPrivacyProcessor.process(
+                partial,
+                sanitized,
+                progress,
+                removeEpubPrivacyMarkers,
+                normalizedArchiveTimestampMillis
+            )
+            warnings = postProcess.warnings
+            if (postProcess.success) {
+                partial.delete()
+                finalPartial = sanitized
+                progress(ProgressUpdate("Validated sanitized EPUB", 1, 1))
+            } else {
+                sanitized.delete()
+                progress(ProgressUpdate("EPUB completed with warning", 1, 1))
+            }
+        }
         output.delete()
-        if (!partial.renameTo(output)) throw IOException("Could not finalize ${format.uppercase()} output")
+        if (!finalPartial.renameTo(output)) throw IOException("Could not finalize ${format.uppercase()} output")
         progress(ProgressUpdate("Validated ${format.uppercase()}", 1, 1))
         return DecryptResult(
             book.bookId,
@@ -136,7 +163,8 @@ class CryptoEngine {
             if (format == "pdf") "application/pdf" else "application/epub+zip",
             output,
             format,
-            sha256(output)
+            sha256(output),
+            warnings = warnings
         )
     }
 
@@ -146,7 +174,8 @@ class CryptoEngine {
         contentKey: ByteArray?,
         deviceId: String,
         outputDirectory: File,
-        progress: (ProgressUpdate) -> Unit
+        progress: (ProgressUpdate) -> Unit,
+        normalizedArchiveTimestampMillis: Long?
     ): DecryptResult {
         val bookId = book.bookId
         val keys = buildList {
@@ -188,8 +217,8 @@ class CryptoEngine {
             val missing = (0..lastIndex).firstOrNull { expected -> sortedPages.none { it.first == expected } }
             if (missing != null) throw IOException("Comic page __ridi__$missing is missing")
             val ordered = buildList {
-                add(cover.single() to 0)
-                sortedPages.forEach { (index, source) -> add(source to index + 1) }
+                add(cover.single() to 1)
+                sortedPages.forEach { (index, source) -> add(source to index + 2) }
             }
 
             val output = File(outputDirectory, comicOutputName(book.title, bookId, book.comicQuality))
@@ -206,7 +235,13 @@ class CryptoEngine {
                     val extension = imageExtension(image)
                     val name = canonicalComicName(outputIndex, lastIndex, extension)
                     expectedHashes[name] = sha256(image)
-                    zipOut.putNextEntry(ZipEntry(name))
+                    val entry = ZipEntry(name).apply {
+                        time = EpubIntegrityValidator.resolveEntryTimestamp(
+                            sourceTimestamp(source),
+                            normalizedArchiveTimestampMillis
+                        )
+                    }
+                    zipOut.putNextEntry(entry)
                     zipOut.write(image)
                     zipOut.closeEntry()
                     progress(ProgressUpdate("Decrypting comic", position + 1L, ordered.size.toLong()))
@@ -258,6 +293,12 @@ class CryptoEngine {
         return input.use { it.readBounded(MAX_COMIC_IMAGE_BYTES) }
     }
 
+    private fun sourceTimestamp(source: ComicSource): Long = when {
+        source.file != null -> source.file.lastModified()
+        source.archive != null && source.entryName != null -> source.archive.getEntry(source.entryName)?.time ?: -1L
+        else -> -1L
+    }
+
     private fun java.io.InputStream.readBounded(maxBytes: Long): ByteArray {
         val output = java.io.ByteArrayOutputStream()
         val buffer = ByteArray(128 * 1024)
@@ -276,7 +317,10 @@ class CryptoEngine {
         if (isImage(source)) return source
         keys.forEach { key ->
             if (source.isNotEmpty() && source.size % 16 == 0) {
-                runCatching { decryptEcb(source, key) }.getOrNull()?.takeIf(::isImage)?.let { return it }
+                runCatching { removePkcs7IfValid(decryptEcb(source, key)) }
+                    .getOrNull()
+                    ?.takeIf(::isImage)
+                    ?.let { return it }
             }
             runCatching { decryptCbc(source, key) }.getOrNull()?.takeIf(::isImage)?.let { return it }
         }
@@ -294,6 +338,7 @@ class CryptoEngine {
         val cipher = Cipher.getInstance("AES/ECB/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"))
         cryptFile(source, target, cipher, 0, "Decrypting EPUB", progress)
+        truncatePkcs7(target, "EPUB")
     }
 
     private fun decryptCbcFile(
@@ -310,15 +355,23 @@ class CryptoEngine {
         val cipher = Cipher.getInstance("AES/CBC/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, "AES"), IvParameterSpec(iv))
         cryptFile(source, target, cipher, 16, "Decrypting PDF", progress)
+        truncatePkcs7(target, "PDF")
+    }
+
+    private fun truncatePkcs7(target: File, format: String) {
         RandomAccessFile(target, "rw").use { file ->
-            if (file.length() == 0L) throw IOException("PDF decryption produced no data")
+            if (file.length() == 0L) throw IOException("$format decryption produced no data")
             file.seek(file.length() - 1)
             val padding = file.readUnsignedByte()
-            if (padding !in 1..16 || padding > file.length()) throw IOException("Invalid PDF padding")
+            if (padding !in 1..16 || padding > file.length()) {
+                throw IOException("Invalid $format padding")
+            }
             val tail = ByteArray(padding)
             file.seek(file.length() - padding)
             file.readFully(tail)
-            if (tail.any { (it.toInt() and 0xff) != padding }) throw IOException("Invalid PDF padding")
+            if (tail.any { (it.toInt() and 0xff) != padding }) {
+                throw IOException("Invalid $format padding")
+            }
             file.setLength(file.length() - padding)
         }
     }
@@ -382,6 +435,9 @@ class CryptoEngine {
         require(bytes.takeLast(size).all { (it.toInt() and 0xff) == size })
         return bytes.copyOf(bytes.size - size)
     }
+
+    private fun removePkcs7IfValid(bytes: ByteArray): ByteArray =
+        runCatching { removePkcs7(bytes) }.getOrDefault(bytes)
 
     private fun isPlainPublication(file: File, format: String): Boolean = when (format) {
         "epub" -> hasHeader(file, ZIP_HEADER)
@@ -476,9 +532,9 @@ class CryptoEngine {
     }
 
     internal fun canonicalComicName(outputIndex: Int, lastSourceIndex: Int, extension: String): String {
-        require(outputIndex in 0..lastSourceIndex + 1)
+        require(outputIndex in 1..lastSourceIndex + 2)
         require(extension in IMAGE_EXTENSIONS)
-        val width = maxOf(3, (lastSourceIndex + 1).toString().length)
+        val width = maxOf(3, (lastSourceIndex + 2).toString().length)
         return outputIndex.toString().padStart(width, '0') + "." + extension
     }
 

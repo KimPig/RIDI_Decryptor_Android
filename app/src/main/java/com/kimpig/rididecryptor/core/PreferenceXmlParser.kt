@@ -20,6 +20,10 @@ object PreferenceXmlParser {
             .firstOrNull { it.length >= 18 && it.none(Char::isWhitespace) }
     }
 
+    fun accountId(xml: String): String? = strings(xml)["user_id_v2"]
+        ?.trim()
+        ?.takeIf(String::isNotBlank)
+
     private fun decodeXml(value: String): String = value
         .replace("&quot;", "\"")
         .replace("&apos;", "'")

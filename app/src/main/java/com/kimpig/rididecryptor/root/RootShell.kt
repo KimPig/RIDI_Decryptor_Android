@@ -1,6 +1,7 @@
 package com.kimpig.rididecryptor.root
 
 import com.topjohnwu.superuser.Shell
+import com.topjohnwu.superuser.io.SuFile
 import com.topjohnwu.superuser.io.SuFileInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -99,6 +100,7 @@ class RootShell {
         // The privileged side is input-only. All writes target a normal app-owned File.
         requireNonOfficialDestination(destination)
         destination.parentFile?.mkdirs()
+        val sourceLastModified = runCatching { SuFile.open(source).lastModified() }.getOrDefault(0L)
         val worker = CompletableFuture.runAsync({
             openRootInput(source).use { input ->
                 FileOutputStream(destination).use { output -> input.copyTo(output, 128 * 1024) }
@@ -106,6 +108,7 @@ class RootShell {
         }, Shell.EXECUTOR)
         try {
             worker.get(timeoutSeconds, TimeUnit.SECONDS)
+            if (sourceLastModified > 0L) destination.setLastModified(sourceLastModified)
         } catch (_: TimeoutException) {
             worker.cancel(true)
             destination.delete()

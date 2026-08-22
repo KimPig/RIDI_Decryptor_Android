@@ -19,7 +19,8 @@ data class RootScanResult(
     val androidUser: String = "0",
     val internalBooks: Int = 0,
     val removableBooks: Int = 0,
-    val dataRoots: List<String> = emptyList()
+    val dataRoots: List<String> = emptyList(),
+    val currentAccountId: String? = null
 )
 
 class RidiAppNotInstalledException : IOException("The official RIDI app is not installed")
@@ -66,6 +67,7 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
         File(staging.source, "preferences.xml").writeText(preferences)
         val deviceId = PreferenceXmlParser.deviceId(preferences)
             ?: throw RidiDeviceInfoMissingException("device_id was not found in the official app preferences")
+        val currentAccountId = PreferenceXmlParser.accountId(preferences)
 
         val metadataAttempt = runCatching {
             OfficialLibraryMetadataReader(shell).read(context, dataRoots, File(staging.source, "Library.realm"))
@@ -123,6 +125,7 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
                 downloadedAt = details?.downloadedAt,
                 lastOpenedAt = details?.lastOpenedAt,
                 isDownloaded = details?.isDownloaded,
+                invalidatedType = details?.invalidatedType,
                 comicQuality = details?.comicQuality,
                 seriesId = details?.seriesId,
                 seriesTitle = details?.seriesTitle,
@@ -142,14 +145,15 @@ class RidiRootSource(private val shell: RootShell = RootShell()) {
             book.copy(coverCachePath = ScanSessionStore.remap(book.coverCachePath, staging, active))
         }
         return RootScanResult(
-            deviceId,
-            committedBooks,
-            metadataCount,
-            metadataIssue,
-            currentUser,
-            committedBooks.count { it.sourceRoot.startsWith("/data/") },
-            committedBooks.count { !it.sourceRoot.startsWith("/data/") },
-            dataRoots
+            deviceId = deviceId,
+            books = committedBooks,
+            metadataCount = metadataCount,
+            metadataIssue = metadataIssue,
+            androidUser = currentUser,
+            internalBooks = committedBooks.count { it.sourceRoot.startsWith("/data/") },
+            removableBooks = committedBooks.count { !it.sourceRoot.startsWith("/data/") },
+            dataRoots = dataRoots,
+            currentAccountId = currentAccountId
         )
         } catch (error: Throwable) {
             ScanSessionStore.abort(staging)

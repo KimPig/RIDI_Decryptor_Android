@@ -1,6 +1,8 @@
 package com.kimpig.rididecryptor.ui
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.util.LruCache
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,6 +17,7 @@ import com.kimpig.rididecryptor.core.LibraryGroup
 import com.kimpig.rididecryptor.core.LibraryGrouping
 import java.text.DateFormat
 import java.util.Date
+import java.io.File
 
 class BookAdapter(
     private val onSelectionChanged: (BookCandidate, Boolean) -> Unit,
@@ -166,6 +169,8 @@ class BookAdapter(
         private val card: MaterialCardView = view as MaterialCardView
         val toggle: View = view.findViewById(R.id.seriesToggle)
         private val cover: ImageView = view.findViewById(R.id.seriesCover)
+        private val middleCover: ImageView = view.findViewById(R.id.seriesCoverMiddle)
+        private val backCover: ImageView = view.findViewById(R.id.seriesCoverBack)
         private val placeholder: TextView = view.findViewById(R.id.seriesPlaceholder)
         private val title: TextView = view.findViewById(R.id.seriesTitle)
         private val summary: TextView = view.findViewById(R.id.seriesSummary)
@@ -173,12 +178,13 @@ class BookAdapter(
         private val arrow: ImageView = view.findViewById(R.id.seriesArrow)
 
         fun bind(group: LibraryGroup, expanded: Boolean, selectedCount: Int, multiSelectMode: Boolean) {
-            val bitmap = group.books.asSequence().mapNotNull { book ->
-                book.coverCachePath?.let(BitmapFactory::decodeFile)
-            }.firstOrNull()
-            cover.visibility = if (bitmap == null) View.GONE else View.VISIBLE
-            placeholder.visibility = if (bitmap == null) View.VISIBLE else View.GONE
-            cover.setImageBitmap(bitmap)
+            val bitmaps = group.books.asSequence().mapNotNull { book ->
+                book.coverCachePath?.let { loadCover(it, dp(64), dp(88)) }
+            }.take(3).toList()
+            setCover(cover, bitmaps.getOrNull(0))
+            setCover(middleCover, bitmaps.getOrNull(1))
+            setCover(backCover, bitmaps.getOrNull(2))
+            placeholder.visibility = if (bitmaps.isEmpty()) View.VISIBLE else View.GONE
             title.text = group.title
             summary.text = "${group.books.size} books · ${group.decryptedCount}/${group.books.size} Decrypted"
             val allSelected = selectedCount == group.books.size
@@ -210,6 +216,11 @@ class BookAdapter(
             }
         }
 
+        private fun setCover(view: ImageView, bitmap: Bitmap?) {
+            view.setImageBitmap(bitmap)
+            view.visibility = if (bitmap == null) View.GONE else View.VISIBLE
+        }
+
         private fun dp(value: Int): Int = (value * itemView.resources.displayMetrics.density).toInt()
     }
 
@@ -232,7 +243,7 @@ class BookAdapter(
                 card.layoutParams = params
             }
             format.text = item.displayFormat
-            val bitmap = item.coverCachePath?.let(BitmapFactory::decodeFile)
+            val bitmap = item.coverCachePath?.let { loadCover(it, dp(64), dp(88)) }
             cover.visibility = if (bitmap == null) View.GONE else View.VISIBLE
             format.visibility = if (bitmap == null) View.VISIBLE else View.GONE
             cover.setImageBitmap(bitmap)
@@ -262,8 +273,12 @@ class BookAdapter(
             decrypted.visibility = if (item.isDecrypted) View.VISIBLE else View.GONE
             tags.visibility = if (qualityLabel != null || item.isDecrypted) View.VISIBLE else View.GONE
 
-            rental.visibility = if (item.expiresAt == null && !item.isOwned) View.GONE else View.VISIBLE
-            if (item.isOwned) {
+            val accessNotice = item.officialAccessNotice
+            rental.visibility = if (accessNotice == null && item.expiresAt == null && !item.isOwned) View.GONE else View.VISIBLE
+            if (accessNotice != null) {
+                rental.text = accessNotice
+                rental.setTextColor(ContextCompat.getColor(itemView.context, R.color.error_text))
+            } else if (item.isOwned) {
                 rental.text = "Owned"
                 rental.setTextColor(ContextCompat.getColor(itemView.context, R.color.success_text))
             } else item.expiresAt?.let { expires ->
@@ -285,5 +300,27 @@ class BookAdapter(
     companion object {
         private const val TYPE_BOOK = 0
         private const val TYPE_SERIES = 1
+        private val coverCache = object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
+            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        }
+
+        private fun loadCover(path: String, targetWidth: Int, targetHeight: Int): Bitmap? {
+            val file = File(path)
+            if (!file.isFile) return null
+            val key = "$path:${file.lastModified()}:$targetWidth:$targetHeight"
+            coverCache.get(key)?.let { return it }
+
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            var sample = 1
+            while (bounds.outWidth / sample > targetWidth * 2 || bounds.outHeight / sample > targetHeight * 2) {
+                sample *= 2
+            }
+            val bitmap = BitmapFactory.decodeFile(path, BitmapFactory.Options().apply { inSampleSize = sample })
+                ?: return null
+            coverCache.put(key, bitmap)
+            return bitmap
+        }
     }
 }

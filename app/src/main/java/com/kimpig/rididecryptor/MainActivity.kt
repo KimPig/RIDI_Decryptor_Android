@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -34,6 +35,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+
+private data class DecryptBatchResult(
+    val saved: List<String>,
+    val skipped: List<String>,
+    val failed: List<String>,
+    val warnings: List<String>
+)
 
 class MainActivity : AppCompatActivity() {
     private lateinit var rootGate: View
@@ -357,10 +365,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         runBusy("Preparing private working copies…") {
-            val (saved, skipped, failed) = withContext(Dispatchers.IO) {
+            val result = withContext(Dispatchers.IO) {
                 val saved = mutableListOf<String>()
                 val skipped = mutableListOf<String>()
                 val failed = mutableListOf<String>()
+                val warnings = mutableListOf<String>()
                 val outputTree = OutputSettings.outputTree(this@MainActivity)
                 candidates.forEachIndexed { index, candidate ->
                     val work = File(cacheDir, "work/${System.currentTimeMillis()}-$index")
@@ -380,23 +389,45 @@ class MainActivity : AppCompatActivity() {
                             }
                         }
                         statusOnMain("${index + 1}/${candidates.size} · Decrypting and validating ${candidate.displayTitle}…")
-                        val result = CryptoEngine().decrypt(prepared, activeDeviceId, outputDir, ::progressOnMain)
+                        val normalizedTimestamp = if (OutputSettings.normalizeArchiveTimestamps(this@MainActivity)) {
+                            OutputSettings.archiveTimestampMillis(this@MainActivity)
+                        } else null
+                        val result = CryptoEngine().decrypt(
+                            prepared,
+                            activeDeviceId,
+                            outputDir,
+                            ::progressOnMain,
+                            OutputSettings.removeEpubPrivacyMarkers(this@MainActivity),
+                            normalizedTimestamp
+                        )
                         val saveResult = OutputStore(this@MainActivity).save(result, outputTree, ::progressOnMain)
                         if (saveResult.skipped) skipped += candidate.displayTitle else saved += saveResult.location
+                        result.warnings.forEach { warning ->
+                            warnings += "${candidate.displayTitle}: $warning"
+                        }
                     } catch (error: Throwable) {
                         failed += "${candidate.displayTitle}: ${error.message ?: error.javaClass.simpleName}"
                     } finally {
                         work.deleteRecursively()
                     }
                 }
-                Triple(saved, skipped, failed)
+                DecryptBatchResult(saved, skipped, failed, warnings)
             }
-            status(buildString {
-                append("Completed: ${saved.size} saved")
+            val saved = result.saved
+            val skipped = result.skipped
+            val failed = result.failed
+            val warnings = result.warnings
+            val completionSummary = buildString {
+                append(if (warnings.isEmpty()) "Completed" else "Completed with warning")
+                append(" · ${saved.size} saved")
                 if (skipped.isNotEmpty()) append(" · ${skipped.size} skipped")
-                if (failed.isNotEmpty()) append(" · ${failed.size} failed\n${failed.joinToString("\n")}")
-            })
+                if (warnings.isNotEmpty()) append(" · ${warnings.size} warning(s)")
+                if (failed.isNotEmpty()) append(" · ${failed.size} failed")
+            }
+            val details = warnings + failed
+            status(completionSummary + if (details.isEmpty()) "" else "\n${details.joinToString("\n")}")
             refreshOutputStatusNow()
+            Toast.makeText(this@MainActivity, completionSummary, Toast.LENGTH_LONG).show()
         }
     }
 

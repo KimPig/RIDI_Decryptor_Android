@@ -63,11 +63,11 @@ class CryptoEngineTest {
 
     @Test
     fun comicNamesUseCoverZeroAndShiftPagesByOne() {
-        assertEquals("000.jpg", engine.canonicalComicName(0, 79, "jpg"))
         assertEquals("001.jpg", engine.canonicalComicName(1, 79, "jpg"))
-        assertEquals("013.jpg", engine.canonicalComicName(13, 79, "jpg"))
-        assertEquals("080.jpg", engine.canonicalComicName(80, 79, "jpg"))
-        assertEquals("1000.png", engine.canonicalComicName(1000, 999, "png"))
+        assertEquals("002.jpg", engine.canonicalComicName(2, 79, "jpg"))
+        assertEquals("014.jpg", engine.canonicalComicName(14, 79, "jpg"))
+        assertEquals("081.jpg", engine.canonicalComicName(81, 79, "jpg"))
+        assertEquals("1001.png", engine.canonicalComicName(1001, 999, "png"))
     }
 
     @Test

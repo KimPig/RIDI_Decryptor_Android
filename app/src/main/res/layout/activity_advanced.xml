@@ -80,6 +80,54 @@
             <TextView
                 style="@style/SectionTitle"
                 android:layout_marginTop="24dp"
+                android:text="Privacy processing" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/removeEpubMarkersSwitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:checked="true"
+                android:text="Remove supported EPUB privacy markers"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                app:thumbTint="@color/settings_switch_thumb"
+                app:trackTint="@color/settings_switch_track"
+                app:useMaterialThemeColors="false" />
+
+            <com.google.android.material.switchmaterial.SwitchMaterial
+                android:id="@+id/normalizeTimestampsSwitch"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:checked="false"
+                android:text="Normalize EPUB and comic ZIP entry timestamps"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                app:thumbTint="@color/settings_switch_thumb"
+                app:trackTint="@color/settings_switch_track"
+                app:useMaterialThemeColors="false" />
+
+            <com.google.android.material.textfield.TextInputLayout
+                android:id="@+id/archiveTimestampLayout"
+                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:hint="Archive timestamp"
+                app:helperText="Source entry times are preserved when normalization is disabled">
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/archiveTimestampEdit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="datetime"
+                    android:singleLine="true"
+                    android:text="2010-07-28 12:48:18" />
+            </com.google.android.material.textfield.TextInputLayout>
+
+            <TextView
+                style="@style/SectionTitle"
+                android:layout_marginTop="24dp"
                 android:text="Official app access" />
 
             <com.google.android.material.switchmaterial.SwitchMaterial
@@ -115,6 +163,17 @@
                 android:textColor="@color/text_secondary"
                 android:textIsSelectable="true"
                 android:textSize="14sp" />
+
+            <TextView style="@style/SectionTitle" android:layout_marginTop="24dp" android:text="Current official account" />
+            <TextView
+                android:id="@+id/accountValue"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:fontFamily="monospace"
+                android:textColor="@color/text_primary"
+                android:textIsSelectable="true"
+                android:textSize="13sp" />
 
             <TextView style="@style/SectionTitle" android:layout_marginTop="24dp" android:text="device_id" />
             <TextView

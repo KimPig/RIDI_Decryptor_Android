@@ -57,6 +57,11 @@ class BookDetailsActivity : AppCompatActivity() {
             row("Downloaded", book.downloadedAt?.let(::formatDate) ?: "Unavailable")
             row("Last opened", book.lastOpenedAt?.let(::formatDate) ?: "Unavailable")
         }
+        section("Official library status") {
+            row("Current account", AppSession.scanResult?.currentAccountId ?: "Signed out or unavailable")
+            row("Account access", book.officialAccessState)
+            row("Realm invalidatedType", book.invalidatedType ?: "None")
+        }
         if (book.isComic) section("Page information") {
             row("Displayed pages", book.displayedComicPages?.toString() ?: "Unavailable")
             row("Realm pageCount", book.pageCount?.toString() ?: "Unavailable")

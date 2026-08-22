@@ -14,4 +14,14 @@ class PreferenceXmlParserTest {
         """.trimIndent()
         assertEquals("12345678-1234-1234-1234-123456789abc", PreferenceXmlParser.deviceId(xml))
     }
+
+    @Test
+    fun readsCurrentAccountId() {
+        val xml = """
+            <map>
+              <string name="user_id_v2">reader-account</string>
+            </map>
+        """.trimIndent()
+        assertEquals("reader-account", PreferenceXmlParser.accountId(xml))
+    }
 }
